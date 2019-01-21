@@ -1,0 +1,122 @@
+version: '3'
+services:
+
+  influxdb:
+    # Full tag list: https://hub.docker.com/r/library/influxdb/tags/
+    image: influxdb:latest
+    networks:
+      - HA_NETWORK
+    volumes:
+      # Mount for influxdb data directory
+      - INFLUXDB-DATA:/var/lib/influxdb
+      # Mount for influxdb configuration
+      - INFLUXDB-CONFIG:/etc/influxdb/
+    expose:
+      - "8086"
+      - "8082"
+      - "8089"
+	  
+  telegraf:
+    # Full tag list: https://hub.docker.com/r/library/telegraf/tags/
+    image: telegraf:latest
+    networks:
+      - HA_NETWORK
+    volumes:
+      # Mount for telegraf configuration
+      - TELEGRAF:/etc/telegraf
+      # Mount for Docker API access
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - influxdb
+
+  kapacitor:
+    # Full tag list: https://hub.docker.com/r/library/kapacitor/tags/
+    image: kapacitor:latest
+    networks:
+      - HA_NETWORK
+    volumes:
+      # Mount for kapacitor data directory
+      - KAPACITOR-DATA:/var/lib/kapacitor
+      # Mount for kapacitor configuration
+      - KAPACITOR-CONFIG:/etc/kapacitor
+    expose:
+      # The API for Kapacitor is served on port 9092
+      - "9092"
+
+  chronograf:
+    # Full tag list: https://hub.docker.com/r/library/chronograf/tags/
+    image: chronograf:latest
+    networks:
+      - HA_NETWORK
+    volumes:
+      # Mount for chronograf database
+      - CHRONOGRAF-DATA:/var/lib/chronograf/
+    expose:
+      # The WebUI for Chronograf is served on port 8888
+      - "8888"
+    depends_on:
+      - kapacitor
+      - influxdb
+      - telegraf
+  
+  grafana:
+    image: grafana/grafana:latest
+    networks:
+      - HA_NETWORK
+      - TRAEFIK_NETWORK
+    expose:
+      - "3000"
+    volumes:
+      - GRAFANA-CONFIG:/etc/grafana
+      - GRAFANA-DATA:/var/lib/grafana
+    links:
+      - influxdb
+ 
+  mqtt:
+    container_name: MQTT
+    restart: unless-stopped
+    image: eclipse-mosquitto
+    networks:
+      - HA_NETWORK
+    volumes:
+      - MOSQUITTO:/mosquitto
+      - /etc/localtime:/etc/localtime:ro
+    expose:
+      - "1883"
+ 
+  homeassistant:
+    container_name: home-assistant
+    restart: unless-stopped
+    image: homeassistant/home-assistant
+    depends_on:
+      - "influxdb"
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    volumes:
+      - HOMEASSISTANT:/config
+      - /etc/localtime:/etc/localtime:ro
+    expose:
+      - "8123"
+    networks:
+      - HA_NETWORK
+      - TRAEFIK_NETWORK
+  
+volumes:
+  INFLUXDB-DATA:
+  INFLUXDB-CONFIG:
+  TELEGRAF:
+  KAPACITOR-DATA:
+  KAPACITOR-CONFIG:
+  CHRONOGRAF-DATA:
+  GRAFANA-CONFIG:
+  GRAFANA-DATA:
+  MOSQUITTO:
+  HOMEASSISTANT:
+  
+networks:
+  HA_NETWORK:
+    driver: overlay
+    internal: true
+  TRAEFIK_NETWORK:
+    driver: overlay
+    internal: false
