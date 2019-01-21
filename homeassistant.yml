@@ -87,7 +87,7 @@ services:
   homeassistant:
     container_name: home-assistant
     restart: unless-stopped
-    image: homeassistant/home-assistant
+    image: homeassistant/raspberrypi3-homeassistant
     depends_on:
       - "influxdb"
     devices:
