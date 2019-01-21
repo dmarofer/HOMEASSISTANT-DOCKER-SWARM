@@ -15,8 +15,8 @@ services:
       - "8086"
       - "8082"
       - "8089"
-	  
-  telegraf:
+
+telegraf:
     # Full tag list: https://hub.docker.com/r/library/telegraf/tags/
     image: telegraf:latest
     networks:
