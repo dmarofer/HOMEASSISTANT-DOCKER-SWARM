@@ -1,0 +1,49 @@
+version: '3'
+services:
+
+  influxdb:
+    # Full tag list: https://hub.docker.com/r/library/influxdb/tags/
+    image: influxdb:latest
+    networks:
+      - HA_NETWORK
+    volumes:
+      # Mount for influxdb data directory
+      - INFLUXDB-DATA:/var/lib/influxdb
+      # Mount for influxdb configuration
+      - INFLUXDB-CONFIG:/etc/influxdb/
+  
+  grafana:
+    image: grafana/grafana:latest
+    networks:
+      - HA_NETWORK
+    volumes:
+      - GRAFANA-CONFIG:/etc/grafana
+      - GRAFANA-DATA:/var/lib/grafana
+    links:
+      - influxdb
+      
+  mqtt:
+    container_name: MQTT
+    restart: unless-stopped
+    image: eclipse-mosquitto
+    networks:
+      - HA_NETWORK
+    volumes:
+      - MOSQUITTO:/mosquitto
+      - /etc/localtime:/etc/localtime:ro
+ 
+volumes:
+  INFLUXDB-DATA:
+  INFLUXDB-CONFIG:
+  GRAFANA-CONFIG:
+  GRAFANA-DATA:
+  MOSQUITTO:
+  DIEGO:
+    driver_opts:
+      type: "nfs"
+      o: "addr=192.168.1.106,nolock,soft,rw"
+      device: ":/DIEGO"
+      
+networks:
+  HA_NETWORK:
+    driver: overlay
