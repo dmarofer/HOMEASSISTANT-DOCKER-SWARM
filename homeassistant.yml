@@ -11,49 +11,32 @@ services:
       - INFLUXDB-DATA:/var/lib/influxdb
       # Mount for influxdb configuration
       - INFLUXDB-CONFIG:/etc/influxdb/
-    expose:
-      - "8086"
-      - "8082"
-      - "8089"
-
+  
   telegraf:
     # Full tag list: https://hub.docker.com/r/library/telegraf/tags/
     image: telegraf:latest
     networks:
       - HA_NETWORK
     volumes:
-      # Mount for telegraf configuration
       - TELEGRAF:/etc/telegraf
-      # Mount for Docker API access
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - influxdb
 
   kapacitor:
-    # Full tag list: https://hub.docker.com/r/library/kapacitor/tags/
     image: kapacitor:latest
     networks:
       - HA_NETWORK
     volumes:
-      # Mount for kapacitor data directory
       - KAPACITOR-DATA:/var/lib/kapacitor
-      # Mount for kapacitor configuration
       - KAPACITOR-CONFIG:/etc/kapacitor
-    expose:
-      # The API for Kapacitor is served on port 9092
-      - "9092"
-
+  
   chronograf:
-    # Full tag list: https://hub.docker.com/r/library/chronograf/tags/
     image: chronograf:latest
     networks:
       - HA_NETWORK
     volumes:
-      # Mount for chronograf database
       - CHRONOGRAF-DATA:/var/lib/chronograf/
-    expose:
-      # The WebUI for Chronograf is served on port 8888
-      - "8888"
     depends_on:
       - kapacitor
       - influxdb
@@ -63,15 +46,21 @@ services:
     image: grafana/grafana:latest
     networks:
       - HA_NETWORK
-      - TRAEFIK_NETWORK
-    expose:
-      - "3000"
     volumes:
       - GRAFANA-CONFIG:/etc/grafana
       - GRAFANA-DATA:/var/lib/grafana
     links:
       - influxdb
- 
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.port=3000"
+        - "traefik.frontend.rule=Host:dmarofer.mooo.info; PathPrefixStrip: /grafana"
+        - "traefik.docker.network=HOMEASSISTANT_TRAEFIK_NETWORK"
+        - "traefik.extern.frontend.protocol=http"
+    environment:
+     - GF_SERVER_ROOT_URL=http://dmarofer.mooo.info/grafana
+      
   mqtt:
     container_name: MQTT
     restart: unless-stopped
@@ -81,26 +70,53 @@ services:
     volumes:
       - MOSQUITTO:/mosquitto
       - /etc/localtime:/etc/localtime:ro
-    expose:
-      - "1883"
  
   homeassistant:
-    container_name: home-assistant
+    container_name: homeassistant
     restart: unless-stopped
     image: homeassistant/raspberrypi3-homeassistant
     depends_on:
-      - "influxdb"
+      - influxdb
+      - traefik
+      - mqtt
     devices:
       - /dev/ttyACM0:/dev/ttyACM0
     volumes:
       - HOMEASSISTANT:/config
       - /etc/localtime:/etc/localtime:ro
-    expose:
-      - "8123"
+      - DIEGO:/DIEGO
     networks:
       - HA_NETWORK
-      - TRAEFIK_NETWORK
-  
+    ports:
+      - "8123:8123"
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.backend=HOMEASSISTANT_homeassistant.1"
+        - "traefik.port=8123"
+        - "traefik.frontend.rule=Host:dmarofer.mooo.info; PathPrefixStrip: /homeassistant"
+        - "traefik.docker.network=HOMEASSISTANT_TRAEFIK_NETWORK"
+                   
+  traefik:
+    image: traefik
+    command: --web \
+      --docker \
+      --docker.swarmmode \
+      --docker.domain=traefik \
+      --docker.watch \
+      --logLevel=DEBUG
+    networks:
+      - HA_NETWORK
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /dev/null:/traefik.toml
+    deploy:
+      placement:
+        constraints: [node.role==manager]
+      
 volumes:
   INFLUXDB-DATA:
   INFLUXDB-CONFIG:
@@ -112,12 +128,13 @@ volumes:
   GRAFANA-DATA:
   MOSQUITTO:
   HOMEASSISTANT:
-  
-  
+  PROXY_DATA:
+  DIEGO:
+    driver_opts:
+      type: "nfs"
+      o: "addr=192.168.1.106,nolock,soft,rw"
+      device: ":/DIEGO"
+      
 networks:
   HA_NETWORK:
     driver: overlay
-    internal: true
-  TRAEFIK_NETWORK:
-    driver: overlay
-    internal: false
